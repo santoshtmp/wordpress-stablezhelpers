@@ -484,21 +484,6 @@ if (!class_exists('MoodleSSO')) {
         private $shared_secret = '';
 
         /**
-         * Constructor
-         *
-         * Loads SSO configuration from WordPress options.
-         *
-         * @since 1.0.0
-         */
-        public function __construct() {
-            if (function_exists('get_option')) {
-                $this->enabled = (bool) get_option('moodle_sso_enabled', 0);
-                $this->moodle_url = trim(get_option('moodle_url', ''));
-                $this->shared_secret = get_option('moodle_shared_secret', '');
-            }
-        }
-
-        /**
          * Check if SSO is enabled
          *
          * @since 1.0.0
@@ -539,6 +524,39 @@ if (!class_exists('MoodleSSO')) {
                 self::$instance = new self();
             }
             return self::$instance;
+        }
+
+        /**
+         * Private constructor to prevent direct instantiation
+         *
+         * Loads SSO configuration from WordPress options.
+         *
+         * @since 1.0.0
+         */
+        private function __construct() {
+            if (function_exists('get_option')) {
+                $this->enabled = (bool) get_option('moodle_sso_enabled', 0);
+                $this->moodle_url = trim(get_option('moodle_url', ''));
+                $this->shared_secret = get_option('moodle_shared_secret', '');
+            }
+        }
+
+        /**
+         * Prevent cloning of the instance
+         *
+         * @since 1.0.0
+         * @return void
+         */
+        private function __clone() {}
+
+        /**
+         * Prevent unserializing of the instance
+         *
+         * @since 1.0.0
+         * @return void
+         */
+        public function __wakeup() {
+            throw new \Exception('Cannot unserialize singleton');
         }
 
         /**

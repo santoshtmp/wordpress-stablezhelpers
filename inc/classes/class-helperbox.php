@@ -11,6 +11,8 @@ namespace Helperbox_Plugin;
 
 use Helperbox_Plugin\admin\Settings;
 use Helperbox_Plugin\admin\Templates as AdminTemplates;
+use Helperbox_Plugin\Security\Security_Admin_Settings;
+use Helperbox_Plugin\Security\Security_Handler;
 
 // Exit if accessed directly.
 if (!defined('ABSPATH')) {
@@ -27,16 +29,16 @@ class HelperBox {
      */
     function __construct() {
         // 
-        if (!is_plugin_active('wordpress-custom-helperbox/custom-helperbox.php')) {
-            return;
-        }
+        // if (!is_plugin_active('wordpress-custom-helperbox/custom-helperbox.php')) {
+        //     return;
+        // }
 
         // 
         if (class_exists(Settings::class)) {
             new Settings();
         }
-        if (class_exists(Securities::class)) {
-            new Securities();
+        if (class_exists(Security_Handler::class)) {
+            Security_Handler::get_instance();
         }
         if (class_exists(Assets::class)) {
             new Assets();
@@ -195,6 +197,8 @@ class HelperBox {
         if ($screen && $screen->id == 'settings_page_helperbox') {
             AdminTemplates::get_template_notification_file_mod_disable();
         }
+
+        Security_Admin_Settings::get_instance()->show_recent_admin_creation_notice();
     }
 
     /**
@@ -215,6 +219,52 @@ class HelperBox {
         // Remove a mime type.
         unset($mimes['exe']);
         return $mimes;
+    }
+
+
+    /**
+     * Logs exceptions with backtrace to a secure file.
+     *
+     * @param \Throwable $throwable
+     *   The exception or error to log.
+     * $type can be 'error', 'message', 'log' or any other string to categorize the log entry.
+     *
+     * @return void
+     */
+    public static function set_log_message($th, $type = ''): void {
+        $upload_dir = wp_upload_dir();
+        $log_dir = $upload_dir['basedir'] . '/helperbox_log';
+        $log_file = $log_dir . '/' . date("Y-m") . '-log.txt';
+
+        // Create directory if it does not exist
+        if (!is_dir($log_dir)) {
+            mkdir($log_dir, 0775, true);
+        }
+
+        $log_message = "[" . date("Y-m-d H:i:s") . "] ";
+
+        if (strtolower($type) === 'error') {
+            $backtrace = debug_backtrace();
+            $initial_error_file = $backtrace[1]['file'] ?? '';
+            $initial_error_line = $backtrace[1]['line'] ?? '';
+
+            $log_message .= "ERROR: " . $th->getMessage() . " in " . $th->getFile() . " on line " . $th->getLine();
+
+            if ($initial_error_file && $initial_error_line) {
+                $log_message .= " | Initial Error File: {$initial_error_file} on line {$initial_error_line}";
+            }
+
+            $log_message .= PHP_EOL;
+        } elseif (strtolower($type) === 'message') {
+            $log_message .= "MESSAGE: " . $th . PHP_EOL;
+        } else {
+            $log_message .= $th . PHP_EOL;
+        }
+
+        // Write log safely
+        if (is_writable($log_dir)) {
+            file_put_contents($log_file, $log_message, FILE_APPEND | LOCK_EX);
+        }
     }
 
 
