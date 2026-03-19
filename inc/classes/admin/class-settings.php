@@ -15,6 +15,8 @@ namespace Helperbox_Plugin\admin;
 
 use Helperbox_Plugin\Breadcrumb;
 use Helperbox_Plugin\Security\Security_Admin_Settings;
+use Helperbox_Plugin\moodle\MoodleSSO;
+use Helperbox_Plugin\moodle\MoodleSSOHandler;
 use Helperbox_Plugin\User_Role;
 
 /**
@@ -112,6 +114,26 @@ class Settings {
     ];
 
     /**
+     * SSO method options.
+     *
+     * @since 1.0.0
+     * @var array[] {
+     *     @type string $value SSO method value.
+     *     @type string $label Human-readable label.
+     * }
+     */
+    public const SSO_METHOD = [
+        'none'       => [
+            'value' => 'none',
+            'label' => 'None',
+        ],
+        'moodle_sso' => [
+            'value' => 'moodle_sso',
+            'label' => 'Moodle SSO',
+        ],
+    ];
+
+    /**
      * Constructor
      *
      * Registers WordPress hooks for settings page, plugin action links, and option updates.
@@ -163,10 +185,50 @@ class Settings {
      * @return void
      */
     public function admin_init_action() {
+
+        // Register option page setting group
         $this->register_general_setting_options_fields();
         Breadcrumb::register_setting_options_fields();
         $this->register_adminlogin_setting_options_fields();
         Security_Admin_Settings::register_setting_options_fields();
+        MoodleSSO::get_instance()->register_setting_options_fields();
+
+        // Register meta boxes
+        $this->register_meta_boxes();
+    }
+
+    /**
+     * Register meta boxes.
+     */
+    private function register_meta_boxes() {
+        add_meta_box(
+            'helperbox_general_settings',
+            __('Custom Helper Box Settings', 'helperbox'),
+            [$this, 'callback_render_metabox_helperbox_general_settings'],
+            'helperbox_settings_page',
+            'normal',
+            'default'
+        );
+    }
+
+    /**
+     * Register admin submenu page.
+     *
+     * Adds the Helperbox settings page under WordPress Settings menu.
+     *
+     * @since 1.0.0
+     * @return void
+     *
+     * @see add_options_page()
+     */
+    public function helperbox_submenu() {
+        add_options_page(
+            __('Custom Helper Box', 'helperbox'), // Page title.
+            __('Custom Helper Box', 'helperbox'), // Menu title.
+            'manage_options',                     // Capability required.
+            self::ADMIN_PAGE_SLUG,                // Menu slug.
+            [$this, 'callback_helperbox_admin_setting_page_content'] // Callback.
+        );
     }
 
     /**
@@ -192,7 +254,7 @@ class Settings {
             'helperbox_mimes_file_types',
             [
                 'type'              => 'array',
-                'sanitize_callback' => [$this, 'helperbox_sanitize_array_text_field'],
+                'sanitize_callback' => [$this, 'sanitize_callback_helperbox_array_text_field'],
                 'default'           => [],
             ]
         );
@@ -227,6 +289,91 @@ class Settings {
                 'type'              => 'boolean',
                 'sanitize_callback' => 'rest_sanitize_boolean',
                 'default'           => false,
+            ]
+        );
+
+        // Helperbox SSO setting.
+        register_setting(
+            $helperbox_general_settings_group,
+            'helperbox_sso',
+            [
+                'type'              => 'string',
+                'sanitize_callback' => 'sanitize_text_field',
+                'default'           => 'none',
+            ]
+        );
+    }
+
+    /**
+     * Register admin login settings options fields.
+     *
+     * Registers WordPress settings for custom login page customization:
+     * - Custom login feature toggle
+     * - Background color
+     * - Form background color
+     * - Background images
+     * - Logo images
+     *
+     * @since 1.0.0
+     * @return void
+     *
+     * @see register_setting()
+     */
+    private function register_adminlogin_setting_options_fields() {
+        $helperbox_adminlogin_settings_group = 'helperbox_adminlogin_settings_group';
+
+        // Custom login feature toggle.
+        register_setting(
+            $helperbox_adminlogin_settings_group,
+            'helperbox_custom_adminlogin',
+            [
+                'type'              => 'boolean',
+                'sanitize_callback' => 'rest_sanitize_boolean',
+                'default'           => true,
+            ]
+        );
+
+        // Login background color.
+        register_setting(
+            $helperbox_adminlogin_settings_group,
+            'helperbox_adminlogin_bgcolor',
+            [
+                'type'              => 'string',
+                'sanitize_callback' => 'sanitize_hex_color',
+                'default'           => self::DEFAULT_LOGIN_BG,
+            ]
+        );
+
+        // Login form background color.
+        register_setting(
+            $helperbox_adminlogin_settings_group,
+            'helperbox_adminlogin_formbgcolor',
+            [
+                'type'              => 'string',
+                'sanitize_callback' => 'sanitize_hex_color',
+                'default'           => self::DEFAULT_FORMLOGIN_BG,
+            ]
+        );
+
+        // Background images setting.
+        register_setting(
+            $helperbox_adminlogin_settings_group,
+            'helperbox_adminlogin_bgimages',
+            [
+                'type'              => 'array',
+                'sanitize_callback' => [$this, 'sanitize_callback_helperbox_image_ids'],
+                'default'           => [],
+            ]
+        );
+
+        // Logo images setting.
+        register_setting(
+            $helperbox_adminlogin_settings_group,
+            'helperbox_adminlogin_logo',
+            [
+                'type'              => 'array',
+                'sanitize_callback' => [$this, 'sanitize_callback_helperbox_image_ids'],
+                'default'           => [],
             ]
         );
     }
@@ -354,6 +501,34 @@ class Settings {
                 </td>
             </tr>
             <tr>
+                <th scope="row">
+                    <label for="helperbox_sso">
+                        <?php esc_html_e('Helperbox SSO', 'helperbox'); ?>
+                    </label>
+                </th>
+                <td>
+                    <?php
+                    $value = get_option('helperbox_sso', 'none');
+                    foreach (self::SSO_METHOD as $method) :
+                    ?>
+                        <label for="helperbox_sso-<?php echo esc_attr($method['value']); ?>">
+                            <input
+                                type="radio"
+                                name="helperbox_sso"
+                                id="helperbox_sso-<?php echo esc_attr($method['value']); ?>"
+                                value="<?php echo esc_attr($method['value']); ?>"
+                                <?php checked($value, $method['value']); ?>>
+                            <?php echo esc_html($method['label']); ?>
+                        </label>
+                        <br>
+                    <?php endforeach; ?>
+                    <div class="description">
+                        <p><?php esc_html_e('Select the SSO option.', 'helperbox'); ?></p>
+                        <p><?php esc_html_e('Default: None', 'helperbox'); ?></p>
+                    </div>
+                </td>
+            </tr>
+            <tr>
                 <th scope="col">
                     <p><?php esc_html_e('Other available add-on plugins:', 'helperbox'); ?></p>
                 </th>
@@ -384,80 +559,6 @@ class Settings {
             </tr>
         </table>
     <?php
-    }
-
-    /**
-     * Register admin login settings options fields.
-     *
-     * Registers WordPress settings for custom login page customization:
-     * - Custom login feature toggle
-     * - Background color
-     * - Form background color
-     * - Background images
-     * - Logo images
-     *
-     * @since 1.0.0
-     * @return void
-     *
-     * @see register_setting()
-     */
-    private function register_adminlogin_setting_options_fields() {
-        $helperbox_adminlogin_settings_group = 'helperbox_adminlogin_settings_group';
-
-        // Custom login feature toggle.
-        register_setting(
-            $helperbox_adminlogin_settings_group,
-            'helperbox_custom_adminlogin',
-            [
-                'type'              => 'boolean',
-                'sanitize_callback' => 'rest_sanitize_boolean',
-                'default'           => true,
-            ]
-        );
-
-        // Login background color.
-        register_setting(
-            $helperbox_adminlogin_settings_group,
-            'helperbox_adminlogin_bgcolor',
-            [
-                'type'              => 'string',
-                'sanitize_callback' => 'sanitize_hex_color',
-                'default'           => self::DEFAULT_LOGIN_BG,
-            ]
-        );
-
-        // Login form background color.
-        register_setting(
-            $helperbox_adminlogin_settings_group,
-            'helperbox_adminlogin_formbgcolor',
-            [
-                'type'              => 'string',
-                'sanitize_callback' => 'sanitize_hex_color',
-                'default'           => self::DEFAULT_FORMLOGIN_BG,
-            ]
-        );
-
-        // Background images setting.
-        register_setting(
-            $helperbox_adminlogin_settings_group,
-            'helperbox_adminlogin_bgimages',
-            [
-                'type'              => 'array',
-                'sanitize_callback' => [$this, 'helperbox_sanitize_image_ids'],
-                'default'           => [],
-            ]
-        );
-
-        // Logo images setting.
-        register_setting(
-            $helperbox_adminlogin_settings_group,
-            'helperbox_adminlogin_logo',
-            [
-                'type'              => 'array',
-                'sanitize_callback' => [$this, 'helperbox_sanitize_image_ids'],
-                'default'           => [],
-            ]
-        );
     }
 
     /**
@@ -619,9 +720,9 @@ class Settings {
      *
      * @example
      * // Sanitize array of post types
-     * $sanitized = Settings::helperbox_sanitize_array_text_field(['post', 'page', 'product']);
+     * $sanitized = Settings::sanitize_callback_helperbox_array_text_field(['post', 'page', 'product']);
      */
-    public static function helperbox_sanitize_array_text_field($input) {
+    public static function sanitize_callback_helperbox_array_text_field($input) {
         if (!is_array($input)) {
             return [];
         }
@@ -640,9 +741,9 @@ class Settings {
      *
      * @example
      * // Sanitize image IDs
-     * $sanitized = $this->helperbox_sanitize_image_ids([123, 456, 789]);
+     * $sanitized = $this->sanitize_callback_helperbox_image_ids([123, 456, 789]);
      */
-    public function helperbox_sanitize_image_ids($input) {
+    public static function sanitize_callback_helperbox_image_ids($input) {
         if (!$input || null === $input) {
             return;
         }
@@ -657,26 +758,6 @@ class Settings {
     }
 
     /**
-     * Register admin submenu page.
-     *
-     * Adds the Helperbox settings page under WordPress Settings menu.
-     *
-     * @since 1.0.0
-     * @return void
-     *
-     * @see add_options_page()
-     */
-    public function helperbox_submenu() {
-        add_options_page(
-            __('Custom Helper Box', 'helperbox'), // Page title.
-            __('Custom Helper Box', 'helperbox'), // Menu title.
-            'manage_options',                     // Capability required.
-            self::ADMIN_PAGE_SLUG,                // Menu slug.
-            [$this, 'helperbox_admin_setting_page_content_callback'] // Callback.
-        );
-    }
-
-    /**
      * Render the settings page content.
      *
      * Callback function to display the admin settings page with meta boxes and tab navigation.
@@ -684,26 +765,17 @@ class Settings {
      * @since 1.0.0
      * @return void
      */
-    public function helperbox_admin_setting_page_content_callback() {
-        // Register meta boxes.
-        add_meta_box(
-            'helperbox_general_settings',
-            __('Custom Helper Box Settings', 'helperbox'),
-            [$this, 'render_helperbox_general_settings_box'],
-            'helperbox_settings_page',
-            'normal',
-            'default'
-        );
-
+    public function callback_helperbox_admin_setting_page_content() {
         $check_update_status = sanitize_text_field($_GET['check_update_status'] ?? 'false');
-        $active_tab = sanitize_text_field($_GET['tab'] ?? 'general');
+        $setting_group_tab = sanitize_text_field($_GET['tab'] ?? 'general');
     ?>
         <div class="wrap">
             <h1 class="wp-heading-inline"><?php esc_html_e('Custom Helper Box', 'helperbox'); ?></h1>
-            <?php if ($active_tab === 'security' && $check_update_status === 'true') : ?>
+            <?php if ($setting_group_tab === 'security' && $check_update_status === 'true') : ?>
                 <?php Templates::get_template_helperbox_available_update_list(); ?>
-            <?php else : ?>
-                <form method="post" action="options.php" class="helperbox-setting-form-<?php echo esc_attr($active_tab); ?>">
+            <?php endif; ?>
+            <?php if ($setting_group_tab != 'userlist-test') : ?>
+                <form method="post" action="options.php" class="helperbox-setting-form-<?php echo esc_attr($setting_group_tab); ?>">
                     <div id="poststuff">
                         <div id="post-body" class="metabox-holder columns-2">
                             <div id="post-body-content">
@@ -728,8 +800,8 @@ class Settings {
      * @since 1.0.0
      * @return void
      */
-    public function render_helperbox_general_settings_box() {
-        $active_tab = sanitize_text_field($_GET['tab'] ?? 'general');
+    public function callback_render_metabox_helperbox_general_settings() {
+        $setting_group_tab = sanitize_text_field($_GET['tab'] ?? 'general');
         $tabs = [
             'general'    => __('General', 'helperbox'),
             'breadcrumb' => __('Breadcrumb', 'helperbox'),
@@ -737,27 +809,78 @@ class Settings {
             'security'   => __('Security', 'helperbox'),
             'log'        => __('Log', 'helperbox'),
         ];
+
+        $helperbox_sso = get_option('helperbox_sso', 'none');
+        if ('none' !== $helperbox_sso) {
+            $tabs['sso'] = __('SSO', 'helperbox');
+            $tabs['userlist'] = __('User List', 'helperbox');
+        }
     ?>
         <h3 class="nav-tab-wrapper">
             <?php foreach ($tabs as $tab_value => $tab_name) : ?>
                 <a href="?page=helperbox&tab=<?php echo esc_attr($tab_value); ?>"
-                    class="nav-tab <?php echo ($active_tab === $tab_value) ? 'nav-tab-active' : ''; ?>">
+                    class="nav-tab <?php echo ($setting_group_tab === $tab_value) ? 'nav-tab-active' : ''; ?>">
                     <?php echo esc_html($tab_name); ?>
                 </a>
             <?php endforeach; ?>
         </h3>
+        <?php
+        // 
+        switch ($setting_group_tab):
+            case 'general':
+                self::render_general_settings_fields();
+                break;
+            case 'breadcrumb':
+                Breadcrumb::render_settings_fields();
+                break;
+            case 'adminlogin':
+                self::render_adminlogin_settings_fields();
+                break;
+            case 'security':
+                Security_Admin_Settings::render_settings_fields();
+                break;
+            case 'log':
+                Security_Admin_Settings::render_security_log_page();
+                break;
+            case 'sso':
+                if ('none' !== $helperbox_sso) :
+        ?>
+                    <table class="form-table form-table-sso" table-tab="sso">
+                        <tr>
+                            <th scope="row">
+                                <label for="helperbox_sso">
+                                    <?php esc_html_e('Helperbox SSO', 'helperbox'); ?>
+                                </label>
+                            </th>
+                            <td>
+                                <?php
+                                $current_sso = self::SSO_METHOD[$helperbox_sso] ?? self::SSO_METHOD['none'];
+                                ?>
+                                <p>
+                                    <?php
+                                    printf(
+                                        /* translators: %s: Current SSO method name */
+                                        esc_html__('Current SSO method: %s', 'helperbox'),
+                                        '<strong>' . esc_html($current_sso['label']) . '</strong>'
+                                    );
+                                    ?>
+                                </p>
+
+                            </td>
+                        </tr>
+                    </table>
 <?php
-        if ($active_tab === 'general') :
-            self::render_general_settings_fields();
-        elseif ($active_tab === 'breadcrumb') :
-            Breadcrumb::render_settings_fields();
-        elseif ($active_tab === 'adminlogin') :
-            self::render_adminlogin_settings_fields();
-        elseif ($active_tab === 'security') :
-            Security_Admin_Settings::render_settings_fields();
-        elseif ($active_tab === 'log') :
-            Security_Admin_Settings::render_security_log_page();
-        endif;
+                    if ($helperbox_sso === 'moodle_sso') :
+                        MoodleSSO::get_instance()->render_settings_fields();
+                    endif;
+                endif;
+                break;
+            case 'userlist':
+                echo MoodleSSOHandler::get_instance()->get_user_list();
+                break;
+            default:
+                self::render_general_settings_fields();
+        endswitch;
     }
 
     /**

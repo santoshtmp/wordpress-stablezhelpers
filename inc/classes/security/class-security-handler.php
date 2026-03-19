@@ -116,7 +116,7 @@ class Security_Handler {
         add_action('init', [$this, 'init_action'], 10);
         add_action('send_headers', [$this, 'header_protection'], 10);
 
-        add_action('admin_init', [$this, 'disable_plugin_modifications']);
+        add_action('admin_init', [$this, 'disable_plugin_modifications'], 1);
         add_action('admin_bar_menu', [$this, 'modify_top_admin_bar_menu'], 99);
         add_action('wp_dashboard_setup', [$this, 'remove_dashboard_widgets'], 99999);
 
@@ -290,61 +290,76 @@ class Security_Handler {
             return;
         }
 
+        /**
+         * 1. Redirect comments page (admin only)
+         */
         add_action('admin_init', function () {
-            // Redirect any user trying to access comments page
             global $pagenow;
             if ($pagenow === 'edit-comments.php') {
                 wp_safe_redirect(admin_url());
                 exit;
             }
-            // Remove comments metabox from dashboard
-            remove_meta_box('dashboard_recent_comments', 'dashboard', 'normal');
+        });
 
-            // Disable support for comments and trackbacks in post types
+        /**
+         * 2. Remove dashboard comments widget
+         */
+        add_action('wp_dashboard_setup', function () {
+            remove_meta_box('dashboard_recent_comments', 'dashboard', 'normal');
+        });
+
+        /**
+         * 3. Disable comment/trackback support for all post types
+         */
+        add_action('init', function () {
             foreach (get_post_types() as $post_type) {
                 if (post_type_supports($post_type, 'comments')) {
                     remove_post_type_support($post_type, 'comments');
                     remove_post_type_support($post_type, 'trackbacks');
                 }
             }
-
-            // Remove comments page in menu
-            remove_menu_page('edit-comments.php');
         });
 
-        // Close comments on the front-end
+        /**
+         * 4. Remove comments menu from admin (high priority)
+         */
+        add_action('admin_menu', function () {
+            remove_menu_page('edit-comments.php');
+        }, 999);
+
+        /**
+         * 5. Close comments on frontend
+         */
         add_filter('comments_open', '__return_false', 20, 2);
         add_filter('pings_open', '__return_false', 20, 2);
 
-        // Hide existing comments
+        /**
+         * 6. Hide existing comments
+         */
         add_filter('comments_array', '__return_empty_array', 10, 2);
 
-        // Remove comments links from admin bar
-        add_action('init', function () {
-            if (is_admin_bar_showing()) {
-                remove_action('admin_bar_menu', 'wp_admin_bar_comments_menu', 60);
-            }
-        });
+        /**
+         * 7. Remove admin bar comments menu (high priority)
+         */
+        add_action('admin_bar_menu', function ($admin_bar) {
+            $admin_bar->remove_menu('comments');
+        }, 999);
 
-        // Disable Comment Form Website URL
+        /**
+         * 8. Remove website field from comment form
+         */
         add_filter('comment_form_default_fields', function ($fields) {
             if (isset($fields['url'])) {
                 unset($fields['url']);
             }
             return $fields;
         }, 150);
-
-        // Remove comments admin menu bar
-        add_action('admin_bar_menu', function ($admin_bar) {
-            $admin_bar->remove_menu('comments');
-        }, 99);
     }
 
     /**
      * Disable plugin modifications
      *
      * Disable plugin installation, updates, and file editing.
-     * To re-enable plugin installations or updates, remove disable_plugin_modifications.
      *
      * @return void
      */
@@ -378,7 +393,7 @@ class Security_Handler {
      * @return void
      */
     public function modify_top_admin_bar_menu($wp_admin_bar) {
-        $wp_admin_bar->remove_menu('customize');
+        // $wp_admin_bar->remove_menu('customize');
         $wp_admin_bar->remove_node('new-content');
 
         // Check setting for updates helperbox_disallow_file
@@ -489,5 +504,4 @@ class Security_Handler {
 
         return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : 'Unknown';
     }
- 
 }

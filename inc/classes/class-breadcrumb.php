@@ -405,7 +405,7 @@ class Breadcrumb {
             'helperbox_breadcrumb_exclude_post_type',
             [
                 'type'              => 'array',
-                'sanitize_callback' => [admin\Settings::class, 'helperbox_sanitize_array_text_field'],
+                'sanitize_callback' => [admin\Settings::class, 'sanitize_callback_helperbox_array_text_field'],
                 'default'           => [],
             ]
         );

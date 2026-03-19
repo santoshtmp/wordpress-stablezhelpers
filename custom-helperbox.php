@@ -19,7 +19,6 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 */
 
 use Helperbox_Plugin\HelperBox;
-use Helperbox_Plugin\sso\MoodleSSO_Implement;
 
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
@@ -45,9 +44,4 @@ require_once __DIR__ . '/inc/helpers/autoload.php';
 // initialize the main class
 if (class_exists(HelperBox::class)) {
     new HelperBox();
-}
-
-// initialize Moodle SSO implementation
-if (class_exists(MoodleSSO_Implement::class)) {
-    new MoodleSSO_Implement();
 }

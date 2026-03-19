@@ -1,437 +1,23 @@
 <?php
+
 /**
- * Moodle SSO Integration for WordPress
+ * Moodle SSO for WordPress
  *
  * Provides single sign-on functionality between WordPress and Moodle,
  * enabling seamless authentication and session management across both platforms.
  *
  * @package Helperbox
- * @subpackage SSO
+ * @subpackage Moodle
  * @since 1.0.0
  * @copyright 2026 https://santoshmagar.com.np/
  * @author santoshmagar.com.np
  */
 
-namespace Helperbox_Plugin\sso;
+namespace Helperbox_Plugin\moodle;
 
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
 }
-
-// =============================================================================
-// MOODLE SSO IMPLEMENTATION CLASS
-// =============================================================================
-
-if (!class_exists('MoodleSSO_Implement')) {
-    /**
-     * Moodle SSO Implementation Class
-     *
-     * Manages the integration between WordPress and Moodle SSO, including:
-     * - Login/logout hook handlers
-     * - Shortcode registration and rendering
-     * - Admin interface for configuration
-     * - Session synchronization with Moodle
-     *
-     * @since 1.0.0
-     */
-    class MoodleSSO_Implement {
-
-        /**
-         * Moodle SSO helper instance
-         *
-         * @since 1.0.0
-         * @var MoodleSSO
-         */
-        private $sso_helper;
-
-        /**
-         * Constructor
-         *
-         * Initializes the Moodle SSO helper and registers hooks if SSO is enabled.
-         *
-         * @since 1.0.0
-         */
-        public function __construct() {
-            $this->sso_helper = MoodleSSO::get_instance();
-            if ($this->sso_helper->is_enabled()) {
-                $this->init_hooks();
-            }
-        }
-
-        /**
-         * Initialize WordPress hooks
-         *
-         * Registers all necessary action and filter hooks for SSO functionality:
-         * - Login/logout handlers
-         * - Shortcodes ([moodle_link], [moodle_status])
-         * - Admin menu and settings
-         * - Footer output
-         *
-         * @since 1.0.0
-         */
-        private function init_hooks() {
-            // Login/Logout hooks
-            add_action('wp_login', [$this, 'handle_wp_login'], 10, 2);
-            add_action('init', [$this, 'handle_redirect_to_sso_login'], 100);
-            add_filter('logout_url', [$this, 'modify_logout_url'], 10, 2);
-            add_action('wp_logout', [$this, 'handle_redirect_to_sso_logout']);
-
-            // Shortcodes
-            add_shortcode('moodle_link', [$this, 'moodle_link_shortcode']);
-            add_shortcode('moodle_status', [$this, 'moodle_status_shortcode']);
-
-            // Footer output
-            add_action('wp_footer', [$this, 'render_shortcodes_sso_status']);
-
-            // Admin menu (if admin)
-            if (is_admin()) {
-                add_action('admin_menu', [$this, 'register_admin_menu']);
-                add_action('admin_init', [$this, 'register_settings']);
-            }
-        }
-
-        // =============================================================================
-        // HOOK HANDLERS
-        // =============================================================================
-
-        /**
-         * Handle WordPress login - Auto-login to Moodle
-         *
-         * Sends user session data to Moodle upon successful WordPress login,
-         * enabling automatic Moodle authentication.
-         *
-         * @since 1.0.0
-         *
-         * @param string   $user_login Username
-         * @param \WP_User $user       User object
-         * @return void
-         */
-        public function handle_wp_login($user_login, $user) {
-            if (!$this->sso_helper->is_enabled()) {
-                return;
-            }
-
-            $result = $this->sso_helper->send_session_to_moodle($user);
-
-            if (isset($result['status']) && $result['status']) {
-                // Store flag to prevent redirect loop
-                set_transient('moodle_sso_redirect_' . $user->ID, true, 60);
-            }
-        }
-
-        /**
-         * Handle SSO redirect after login
-         *
-         * Redirects user to Moodle SSO login page after WordPress login
-         * if the SSO redirect flag exists.
-         *
-         * @since 1.0.0
-         * @return void
-         */
-        public function handle_redirect_to_sso_login() {
-            if (!is_user_logged_in()) {
-                return;
-            }
-
-            $user = wp_get_current_user();
-            $transient_key = 'moodle_sso_redirect_' . $user->ID;
-
-            if (get_transient($transient_key)) {
-                delete_transient($transient_key);
-                $current_url = home_url(add_query_arg(null, null));
-                $this->sso_helper->redirect_to_sso_login($user, $current_url);
-            }
-        }
-
-        /**
-         * Modify logout URL to include Moodle SSO parameters
-         *
-         * Appends Moodle SSO logout parameters to the WordPress logout URL
-         * to enable synchronized logout from both systems.
-         *
-         * @since 1.0.0
-         *
-         * @param string $logout_url Logout URL
-         * @param string $redirect   Redirect URL after logout
-         * @return string Modified logout URL
-         */
-        public function modify_logout_url($logout_url, $redirect) {
-            if (is_user_logged_in()) {
-                $user = wp_get_current_user();
-                $logout_url = add_query_arg('moodle_sso_logout', '1', $logout_url);
-                $logout_url = add_query_arg('uid', $user->ID, $logout_url);
-            }
-            return $logout_url;
-        }
-
-        /**
-         * Handle WordPress logout - Logout from Moodle
-         *
-         * Processes Moodle logout request when user logs out from WordPress.
-         * Redirects user to Moodle logout endpoint for session cleanup.
-         *
-         * @since 1.0.0
-         * @return void
-         */
-        public function handle_redirect_to_sso_logout() {
-            $redirect_url = wp_login_url() . '?loggedout=true';
-
-            if (isset($_REQUEST['redirect_to'])) {
-                $redirect_url = esc_url_raw($_REQUEST['redirect_to']);
-            }
-
-            // Check for Moodle SSO logout request
-            $moodle_sso_logout = isset($_GET['moodle_sso_logout']) ? intval($_GET['moodle_sso_logout']) : 0;
-            $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
-            if ($moodle_sso_logout === 1 && $uid) {
-                $user = get_userdata($uid);
-                if ($user) {
-                    $this->sso_helper->redirect_to_sso_logout($user, $redirect_url);
-                }
-            }
-        }
-
-        // =============================================================================
-        // SHORTCODES
-        // =============================================================================
-
-        /**
-         * Shortcode: [moodle_link] - Link to Moodle with auto-login
-         *
-         * Generates a Moodle link with automatic SSO authentication for logged-in users.
-         * If SSO is disabled or user is not logged in, displays a standard Moodle login link.
-         *
-         * @since 1.0.0
-         *
-         * @param array  $atts    Shortcode attributes {
-         *     @type string $redirect_to URL to redirect after Moodle login. Default empty.
-         *     @type string $class       CSS class for the link. Default 'moodle-sso-link'.
-         *     @type string $target      Link target attribute. Default '_blank'.
-         * }
-         * @param string $content Shortcode content (link text)
-         * @return string HTML anchor link
-         */
-        public function moodle_link_shortcode($atts, $content = '') {
-            $atts = shortcode_atts([
-                'redirect_to' => '',
-                'class' => 'moodle-sso-link',
-                'target' => '_blank'
-            ], $atts);
-
-            if (!is_user_logged_in()) {
-                return '';
-            }
-
-            if (!$this->sso_helper->is_enabled() || !is_user_logged_in()) {
-                return '<a href="' . esc_url($this->sso_helper->get_moodle_url() . '/login') . '" class="' . esc_attr($atts['class']) . '">' .
-                    esc_html($content ?: 'Login to Moodle') . '</a>';
-            }
-
-            $user = wp_get_current_user();
-
-            // Build Moodle URL
-            if ($atts['redirect_to']) {
-                $redirect_url = esc_url($atts['redirect_to']);
-            } else {
-                $redirect_url = $this->sso_helper->get_moodle_url() . '/my';
-            }
-
-            // Get SSO login URL
-            $sso_url = $this->sso_helper->build_login_url($user, $redirect_url)['moodle_login_url'] ?? '';
-
-            return '<a href="' . esc_url($sso_url) . '" class="' . esc_attr($atts['class']) . '" target="' . esc_attr($atts['target']) . '">' .
-                esc_html($content ?: 'Go to Moodle') . '</a>';
-        }
-
-        /**
-         * Shortcode: [moodle_status] - Show Moodle connection status
-         *
-         * Displays the user's Moodle SSO connection status, including:
-         * - Moodle user ID
-         * - Last synchronization timestamp
-         *
-         * @since 1.0.0
-         *
-         * @param array $atts Shortcode attributes (currently unused)
-         * @return string Status HTML with styled div
-         */
-        public function moodle_status_shortcode($atts) {
-            if (!is_user_logged_in()) {
-                return '<p>Moodle SSO: Not logged in</p>';
-            }
-
-            $user = wp_get_current_user();
-            $moodle_user_id = get_user_meta($user->ID, 'moodle_user_id', true);
-            $last_sync = get_user_meta($user->ID, 'moodle_last_sync', true);
-
-            if ($moodle_user_id) {
-                $status = '<div style="padding: 15px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; margin: 10px 0;">';
-                $status .= '<strong>✓ Moodle Connected</strong><br>';
-                $status .= 'Moodle User ID: ' . intval($moodle_user_id) . '<br>';
-                if ($last_sync) {
-                    $status .= 'Last Sync: ' . date('Y-m-d H:i:s', $last_sync);
-                }
-                $status .= '</div>';
-                return $status;
-            } else {
-                return '<div style="padding: 15px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; margin: 10px 0;">
-                        <strong>⚠ Moodle Not Connected</strong><br>
-                        User has not been synced with Moodle yet.
-                        </div>';
-            }
-        }
-
-        // =============================================================================
-        // ADMIN INTERFACE
-        // =============================================================================
-
-        /**
-         * Register admin menu
-         *
-         * Adds the Moodle SSO settings page to the WordPress admin menu
-         * under Settings > Moodle SSO.
-         *
-         * @since 1.0.0
-         * @return void
-         */
-        public function register_admin_menu() {
-            add_options_page(
-                'Moodle SSO',
-                'Moodle SSO',
-                'manage_options',
-                'moodle-sso',
-                [$this, 'render_admin_page']
-            );
-        }
-
-        /**
-         * Register settings
-         *
-         * Registers WordPress options for Moodle SSO configuration:
-         * - moodle_sso_enabled: Enable/disable SSO functionality
-         * - moodle_url: Moodle site URL
-         * - moodle_shared_secret: Shared secret key for encryption
-         *
-         * @since 1.0.0
-         * @return void
-         */
-        public function register_settings() {
-            register_setting('moodle_sso_group', 'moodle_sso_enabled');
-            register_setting('moodle_sso_group', 'moodle_url');
-            register_setting('moodle_sso_group', 'moodle_shared_secret');
-        }
-
-        /**
-         * Render admin page
-         *
-         * Outputs the Moodle SSO settings page with:
-         * - Configuration form (enable SSO, Moodle URL, shared secret)
-         * - Usage instructions
-         * - Shortcode examples
-         * - Testing tools
-         *
-         * @since 1.0.0
-         * @return void
-         */
-        public function render_admin_page() { ?>
-            <div class="wrap">
-                <h1>Moodle SSO Integration</h1>
-
-                <form method="post" action="options.php">
-                    <?php settings_fields('moodle_sso_group'); ?>
-                    <?php do_settings_sections('moodle_sso_group'); ?>
-
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row">Enable SSO</th>
-                            <td>
-                                <input type="checkbox" name="moodle_sso_enabled" value="1" <?php checked(get_option('moodle_sso_enabled'), 1); ?> />
-                                <p class="description">Enable automatic Moodle login when users log into WordPress</p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Moodle URL</th>
-                            <td>
-                                <input type="url" name="moodle_url" value="<?php echo esc_attr(get_option('moodle_url')); ?>" class="regular-text" />
-                                <p class="description">Your Moodle site URL (e.g., https://moodle.example.com)</p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Shared Secret Key</th>
-                            <td>
-                                <input type="text" name="moodle_shared_secret" value="<?php echo esc_attr(get_option('moodle_shared_secret')); ?>" class="regular-text" />
-                                <p class="description">Must match the shared secret in Moodle settings. Generate with: <code>openssl rand -base64 32</code></p>
-                            </td>
-                        </tr>
-                    </table>
-
-                    <?php submit_button(); ?>
-                </form>
-
-                <hr>
-
-                <h2>Usage Instructions</h2>
-                <ol>
-                    <li>Configure the same Shared Secret Key in both WordPress and Moodle</li>
-                    <li>Users logging into WordPress will be automatically logged into Moodle</li>
-                    <li>Use <code>[moodle_link]</code> shortcode to add "Go to Moodle" links</li>
-                    <li>Use <code>[moodle_status]</code> shortcode to show connection status</li>
-                </ol>
-
-                <h3>Shortcode Examples</h3>
-                <ul>
-                    <li><code>[moodle_link]Go to Moodle[/moodle_link]</code> - Link to Moodle dashboard</li>
-                    <li><code>[moodle_link course_id="5"]View Course[/moodle_link]</code> - Link to specific course</li>
-                    <li><code>[moodle_status]</code> - Show Moodle connection status</li>
-                </ul>
-
-                <h3>Testing</h3>
-                <p>
-                    <a href="<?php echo esc_url($this->sso_helper->get_moodle_url()); ?>" target="_blank" class="button">
-                        Visit Moodle Site
-                    </a>
-                    <a href="<?php echo esc_url($this->sso_helper->get_moodle_url() . '/local/mchelpers/login/sso.php'); ?>" target="_blank" class="button">
-                        Test SSO Endpoint
-                    </a>
-                </p>
-            </div>
-            <?php
-        }
-
-        // =============================================================================
-        // FOOTER OUTPUT
-        // =============================================================================
-
-        /**
-         * Render shortcodes in footer
-         *
-         * Outputs moodle_link and moodle_status shortcodes before the closing </body> tag.
-         * Only renders for logged-in users when SSO is enabled.
-         *
-         * @since 1.0.0
-         * @return void
-         */
-        public function render_shortcodes_sso_status() {
-            // Only render for logged-in users
-            if (!is_user_logged_in()) {
-                return;
-            }
-
-            // Render moodle_link shortcode
-            $moodle_link = do_shortcode('[moodle_link redirect_to="/my" class="btn" target="_blank"]Go to Course[/moodle_link]');
-
-            // Render moodle_status shortcode
-            $moodle_status = do_shortcode('[moodle_status]');
-
-            // Output in footer
-            echo '<div id="moodle-sso-footer" style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-top: 2px solid #0073aa;">';
-            echo '<div class="moodle-link">' . $moodle_link . '</div>';
-            echo '<div class="moodle-status" style="margin-top: 10px;">' . $moodle_status . '</div>';
-            echo '</div>';
-        }
-    }
-}
-
 
 // =============================================================================
 // Moodle SSO CLASS
@@ -450,6 +36,14 @@ if (!class_exists('MoodleSSO')) {
      * @since 1.0.0
      */
     class MoodleSSO {
+
+        /**
+         * Settings option group name.
+         *
+         * @since 1.0.0
+         * @var string
+         */
+        const MOODLESSO_SETTINGS_OPTION_GROUP = 'helperbox_moodlesso_settings_group';
 
         /**
          * Single instance of this class
@@ -547,7 +141,8 @@ if (!class_exists('MoodleSSO')) {
          * @since 1.0.0
          * @return void
          */
-        private function __clone() {}
+        private function __clone() {
+        }
 
         /**
          * Prevent unserializing of the instance
@@ -927,6 +522,163 @@ if (!class_exists('MoodleSSO')) {
             // Redirect to Moodle for SSO logout
             wp_redirect($logout_url);
             exit;
+        }
+
+        /**
+         * Register Moodle SSO settings options and fields.
+         *
+         * Registers WordPress settings for Moodle SSO integration:
+         * - moodle_sso_enabled: Enable/disable SSO functionality
+         * - moodle_auto_sso: Enable automatic SSO on WordPress login
+         * - moodle_url: Moodle site URL
+         * - moodle_shared_secret: Shared secret key for encryption
+         *
+         * @since 1.0.0
+         * @return void
+         *
+         * @see register_setting()
+         */
+        public function register_setting_options_fields() {
+
+            // Register SSO enabled setting.
+            register_setting(
+                self::MOODLESSO_SETTINGS_OPTION_GROUP,
+                'moodle_sso_enabled',
+                [
+                    'type'              => 'boolean',
+                    'sanitize_callback' => 'rest_sanitize_boolean',
+                    'default'           => false,
+                ]
+            );
+
+            // Register auto SSO setting.
+            register_setting(
+                self::MOODLESSO_SETTINGS_OPTION_GROUP,
+                'moodle_auto_sso',
+                [
+                    'type'              => 'boolean',
+                    'sanitize_callback' => 'rest_sanitize_boolean',
+                    'default'           => false,
+                ]
+            );
+
+            // Register Moodle URL setting.
+            register_setting(
+                self::MOODLESSO_SETTINGS_OPTION_GROUP,
+                'moodle_url',
+                [
+                    'type'              => 'string',
+                    'sanitize_callback' => 'esc_url_raw',
+                    'default'           => '',
+                ]
+            );
+
+            // Register shared secret setting.
+            register_setting(
+                self::MOODLESSO_SETTINGS_OPTION_GROUP,
+                'moodle_shared_secret',
+                [
+                    'type'              => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'default'           => '',
+                ]
+            );
+        }
+
+        /**
+         * Render Moodle SSO settings form fields.
+         *
+         * Outputs HTML form for configuring Moodle SSO integration including:
+         * - SSO enable/disable toggle
+         * - Auto SSO option
+         * - Moodle site URL
+         * - Shared secret key
+         * - Usage instructions and shortcode examples
+         *
+         * @since 1.0.0
+         * @return void
+         *
+         * @see settings_fields()
+         */
+        public function render_settings_fields() {
+            settings_fields(self::MOODLESSO_SETTINGS_OPTION_GROUP); ?>
+            <div class="wrap">
+                <h3>Moodle SSO Integration</h3>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">Enable Moodle SSO</th>
+                        <td>
+                            <input type="checkbox" name="moodle_sso_enabled" value="1" <?php checked(get_option('moodle_sso_enabled'), 1); ?> />
+                            <p class="description">Enable Moodle SSO.</p>
+                        </td>
+                    </tr>
+                    <?php if ($this->is_enabled()) : ?>
+                        <tr class="moodle-sso-field">
+                            <th scope="row">Auto SSO</th>
+                            <td>
+                                <input type="checkbox" name="moodle_auto_sso" value="1" <?php checked(get_option('moodle_auto_sso'), 1); ?> />
+                                <p class="description">Automatically redirect users to Moodle SSO on WordPress login/logout.</p>
+                            </td>
+                        </tr>
+                        <tr class="moodle-sso-field">
+                            <th scope="row">Moodle URL</th>
+                            <td>
+                                <input type="url" name="moodle_url" value="<?php echo esc_attr(get_option('moodle_url')); ?>" class="regular-text required-field" required />
+                                <p class="description">Your Moodle site URL (e.g., https://moodle.example.com)</p>
+                            </td>
+                        </tr>
+                        <tr class="moodle-sso-field">
+                            <th scope="row">Shared Secret Key</th>
+                            <td>
+                                <input type="text" name="moodle_shared_secret" value="<?php echo esc_attr(get_option('moodle_shared_secret')); ?>" class="regular-text required-field" required />
+                                <p class="description">Must match the shared secret in Moodle settings. Used for AES-128-CTR encryption.</p>
+                            </td>
+                        </tr>
+                        <tr class="moodle-sso-description-info">
+                            <th>Usage Instructions</th>
+                            <td>
+                                <ol>
+                                    <li>Configure the same Shared Secret Key in both WordPress and Moodle</li>
+                                    <li>Users logging into WordPress will be automatically logged into Moodle</li>
+                                    <li>Use <code>[moodle_link]</code> shortcode to add "Go to Moodle" links</li>
+                                    <li>Use <code>[moodle_status]</code> shortcode to show connection status</li>
+                                </ol>
+                            </td>
+                        </tr>
+                        <tr class="moodle-sso-description-info">
+                            <th>Shortcode Examples</th>
+                            <td>
+                                <ul>
+                                    <li><code>[moodle_link]Go to Moodle[/moodle_link]</code> - Link to Moodle dashboard</li>
+                                    <li><code>[moodle_link course_id="5"]View Course[/moodle_link]</code> - Link to specific course</li>
+                                    <li><code>[moodle_link redirect_to="/my"]View Dashboard[/moodle_link]</code> - Link to specific moodle url</li>
+                                    <li><code>[moodle_status]</code> - Show Moodle connection status</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr class="moodle-sso-description-info">
+                            <th>Testing</th>
+                            <td>
+                                <?php MoodleSSOHandler::render_shortcodes_sso_example(); ?>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </table>
+                <script>
+                    jQuery(document).ready(function($) {
+                        $('input[name="moodle_sso_enabled"]').on('change', function() {
+                            var isChecked = $(this).is(':checked');
+                            $('.moodle-sso-field').toggle(isChecked);
+                            $('.moodle-sso-description-info').toggle(isChecked);
+                            $('.moodle-sso-field input.required-field').each(function() {
+                                this.required = isChecked;
+                            });
+                        });
+                    });
+                </script>
+
+            </div>
+<?php
         }
     }
 }
