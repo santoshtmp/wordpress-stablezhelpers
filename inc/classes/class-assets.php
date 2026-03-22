@@ -48,7 +48,7 @@ class Assets {
      *
      * @return void
      */
-    function helperbox_register_scripts() {
+    public function helperbox_register_scripts() {
 
         // // dataTables https://datatables.net/
         // wp_register_script(
@@ -93,7 +93,7 @@ class Assets {
      *
      * @return void
      */
-    function helperbox_enqueue_scripts() {
+    public function helperbox_enqueue_scripts() {
     }
 
     /**
@@ -129,6 +129,10 @@ class Assets {
      */
     public function helperbox_admin_enqueue_scripts($hook) {
 
+        // get current screen object
+        $screen = get_current_screen();
+
+        // 
         if (file_exists(HELPERBOX_PATH . 'assets/build/css/admin.css')) {
             wp_enqueue_style(
                 'helperbox-admin-style',
@@ -139,6 +143,7 @@ class Assets {
             );
         }
 
+        // 
         if (file_exists(HELPERBOX_PATH . 'assets/build/js/admin.js')) {
             wp_enqueue_script(
                 'helperbox-admin-script',
@@ -183,6 +188,30 @@ class Assets {
                 'active_tab' => $active_tab
             ]);
         }
+
+        // 
+        if ('users' == $screen->base && 'users.php' == $hook) {
+            wp_enqueue_script(
+                'helperbox-moodle-integraton',
+                HELPERBOX_URL . 'assets/build/js/moodle-integraton.js',
+                ['jquery'],
+                filemtime(HELPERBOX_PATH . 'assets/build/js/moodle-integraton.js'),
+                array(
+                    'strategy' => 'defer',
+                    'in_footer' => true,
+                )
+            );
+
+            // Localize script
+            wp_localize_script(
+                'helperbox-moodle-integraton',
+                'helperboxMoodleJs',
+                [
+                    'ajaxurl' => admin_url('admin-ajax.php'),
+                    'userid'  => get_current_user_id(),
+                ]
+            );
+        }
     }
 
     /**
@@ -193,7 +222,7 @@ class Assets {
      *
      * @return void
      */
-    function helperbox_login_enqueue_scripts() {
+    public function helperbox_login_enqueue_scripts() {
 
         // check setting
         if (get_option('helperbox_custom_adminlogin', '1') != '1') {

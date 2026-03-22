@@ -11,11 +11,9 @@ namespace Helperbox_Plugin;
 
 use Helperbox_Plugin\admin\Settings;
 use Helperbox_Plugin\admin\Templates as AdminTemplates;
+use Helperbox_Plugin\moodle\Moodle_Handler;
 use Helperbox_Plugin\Security\Security_Admin_Settings;
 use Helperbox_Plugin\Security\Security_Handler;
-use Helperbox_Plugin\moodle\MoodleSSO;
-use Helperbox_Plugin\moodle\MoodleSSOHandler;
-use Helperbox_Plugin\moodle\MoodleUserSync;
 
 // Exit if accessed directly.
 if (!defined('ABSPATH')) {
@@ -59,16 +57,10 @@ class HelperBox {
             new Block_Patterns();
         }
 
-        // initialize Moodle SSO handler
-        if (class_exists(MoodleSSOHandler::class)) {
-            MoodleSSOHandler::get_instance();
+        // initialize Moodle handler
+        if (class_exists(Moodle_Handler::class)) {
+            Moodle_Handler::get_instance();
         }
-
-        // initialize User Sync
-        if (class_exists(MoodleUserSync::class)) {
-            MoodleUserSync::get_instance();
-        }
-
 
         // General hooks
         add_action('admin_notices', [$this, 'helperbox_admin_notices']);

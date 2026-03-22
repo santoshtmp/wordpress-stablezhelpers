@@ -15,8 +15,6 @@ namespace Helperbox_Plugin\admin;
 
 use Helperbox_Plugin\Breadcrumb;
 use Helperbox_Plugin\Security\Security_Admin_Settings;
-use Helperbox_Plugin\moodle\MoodleSSO;
-use Helperbox_Plugin\moodle\MoodleSSOHandler;
 use Helperbox_Plugin\User_Role;
 
 /**
@@ -114,22 +112,22 @@ class Settings {
     ];
 
     /**
-     * SSO method options.
+     * External site options.
      *
      * @since 1.0.0
      * @var array[] {
-     *     @type string $value SSO method value.
-     *     @type string $label Human-readable label.
+     *     @type string $value External site value.
+     *     @type string $label Human readable label.
      * }
      */
-    public const SSO_METHOD = [
+    public const EXTERNAL_SITE = [
         'none'       => [
             'value' => 'none',
             'label' => 'None',
         ],
-        'moodle_sso' => [
-            'value' => 'moodle_sso',
-            'label' => 'Moodle SSO',
+        'moodle_site' => [
+            'value' => 'moodle_site',
+            'label' => 'Moodle Site',
         ],
     ];
 
@@ -191,7 +189,6 @@ class Settings {
         Breadcrumb::register_setting_options_fields();
         $this->register_adminlogin_setting_options_fields();
         Security_Admin_Settings::register_setting_options_fields();
-        MoodleSSO::get_instance()->register_setting_options_fields();
 
         // Register meta boxes
         $this->register_meta_boxes();
@@ -292,10 +289,10 @@ class Settings {
             ]
         );
 
-        // Helperbox SSO setting.
+        // External site integration setting.
         register_setting(
             $helperbox_general_settings_group,
-            'helperbox_sso',
+            'helperbox_external_site_integration',
             [
                 'type'              => 'string',
                 'sanitize_callback' => 'sanitize_text_field',
@@ -502,20 +499,20 @@ class Settings {
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="helperbox_sso">
-                        <?php esc_html_e('Helperbox SSO', 'helperbox'); ?>
+                    <label for="helperbox_external_site_integration">
+                        <?php esc_html_e('External site integration', 'helperbox'); ?>
                     </label>
                 </th>
                 <td>
                     <?php
-                    $value = get_option('helperbox_sso', 'none');
-                    foreach (self::SSO_METHOD as $method) :
+                    $value = get_option('helperbox_external_site_integration', 'none');
+                    foreach (self::EXTERNAL_SITE as $method) :
                     ?>
-                        <label for="helperbox_sso-<?php echo esc_attr($method['value']); ?>">
+                        <label for="helperbox_external_site_integration-<?php echo esc_attr($method['value']); ?>">
                             <input
                                 type="radio"
-                                name="helperbox_sso"
-                                id="helperbox_sso-<?php echo esc_attr($method['value']); ?>"
+                                name="helperbox_external_site_integration"
+                                id="helperbox_external_site_integration-<?php echo esc_attr($method['value']); ?>"
                                 value="<?php echo esc_attr($method['value']); ?>"
                                 <?php checked($value, $method['value']); ?>>
                             <?php echo esc_html($method['label']); ?>
@@ -523,7 +520,7 @@ class Settings {
                         <br>
                     <?php endforeach; ?>
                     <div class="description">
-                        <p><?php esc_html_e('Select the SSO option.', 'helperbox'); ?></p>
+                        <p><?php esc_html_e('Select the external site option.', 'helperbox'); ?></p>
                         <p><?php esc_html_e('Default: None', 'helperbox'); ?></p>
                     </div>
                 </td>
@@ -808,14 +805,7 @@ class Settings {
             'adminlogin' => __('Admin login', 'helperbox'),
             'security'   => __('Security', 'helperbox'),
             'log'        => __('Log', 'helperbox'),
-        ];
-
-        $helperbox_sso = get_option('helperbox_sso', 'none');
-        if ('none' !== $helperbox_sso) {
-            $tabs['sso'] = __('SSO', 'helperbox');
-            $tabs['userlist'] = __('User List', 'helperbox');
-        }
-    ?>
+        ]; ?>
         <h3 class="nav-tab-wrapper">
             <?php foreach ($tabs as $tab_value => $tab_name) : ?>
                 <a href="?page=helperbox&tab=<?php echo esc_attr($tab_value); ?>"
@@ -824,7 +814,7 @@ class Settings {
                 </a>
             <?php endforeach; ?>
         </h3>
-        <?php
+<?php
         // 
         switch ($setting_group_tab):
             case 'general':
@@ -841,42 +831,6 @@ class Settings {
                 break;
             case 'log':
                 Security_Admin_Settings::render_security_log_page();
-                break;
-            case 'sso':
-                if ('none' !== $helperbox_sso) :
-        ?>
-                    <table class="form-table form-table-sso" table-tab="sso">
-                        <tr>
-                            <th scope="row">
-                                <label for="helperbox_sso">
-                                    <?php esc_html_e('Helperbox SSO', 'helperbox'); ?>
-                                </label>
-                            </th>
-                            <td>
-                                <?php
-                                $current_sso = self::SSO_METHOD[$helperbox_sso] ?? self::SSO_METHOD['none'];
-                                ?>
-                                <p>
-                                    <?php
-                                    printf(
-                                        /* translators: %s: Current SSO method name */
-                                        esc_html__('Current SSO method: %s', 'helperbox'),
-                                        '<strong>' . esc_html($current_sso['label']) . '</strong>'
-                                    );
-                                    ?>
-                                </p>
-
-                            </td>
-                        </tr>
-                    </table>
-<?php
-                    if ($helperbox_sso === 'moodle_sso') :
-                        MoodleSSO::get_instance()->render_settings_fields();
-                    endif;
-                endif;
-                break;
-            case 'userlist':
-                echo MoodleSSOHandler::get_instance()->get_user_list();
                 break;
             default:
                 self::render_general_settings_fields();

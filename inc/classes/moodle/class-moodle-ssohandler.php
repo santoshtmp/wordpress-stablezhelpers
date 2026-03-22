@@ -3,9 +3,6 @@
 /**
  * Moodle SSO Integration for WordPress
  *
- * Provides single sign-on functionality between WordPress and Moodle,
- * enabling seamless authentication and session management across both platforms.
- *
  * @package Helperbox
  * @subpackage Moodle
  * @since 1.0.0
@@ -23,7 +20,7 @@ if (!defined('ABSPATH')) {
 // MOODLE SSO HANDLER CLASS
 // =============================================================================
 
-if (!class_exists('MoodleSSOHandler')) {
+if (!class_exists(__NAMESPACE__ . '\\Moodle_SSOHandler')) {
     /**
      * Moodle SSO Handler Class
      *
@@ -35,23 +32,23 @@ if (!class_exists('MoodleSSOHandler')) {
      *
      * @since 1.0.0
      */
-    class MoodleSSOHandler {
+    class Moodle_SSOHandler {
 
         /**
          * Singleton instance
          *
          * @since 1.0.0
-         * @var MoodleSSOHandler
+         * @var Moodle_SSOHandler
          */
         private static $instance = null;
 
         /**
-         * Moodle SSO helper instance
+         * Moodle Integration helper instance
          *
          * @since 1.0.0
-         * @var MoodleSSO
+         * @var MoodleIntegration
          */
-        private $sso_helper;
+        private $moodleintegration;
 
         /**
          * Get singleton instance
@@ -59,7 +56,7 @@ if (!class_exists('MoodleSSOHandler')) {
          * Ensures only one instance of the class exists.
          *
          * @since 1.0.0
-         * @return MoodleSSOHandler The singleton instance
+         * @return Moodle_SSOHandler The singleton instance
          */
         public static function get_instance() {
             if (null === self::$instance) {
@@ -77,10 +74,8 @@ if (!class_exists('MoodleSSOHandler')) {
          * @since 1.0.0
          */
         private function __construct() {
-            $this->sso_helper = MoodleSSO::get_instance();
-            if ($this->sso_helper->is_enabled()) {
-                $this->register_hooks();
-            }
+            $this->moodleintegration = Moodle_Integration::get_instance();
+            $this->register_hooks();
         }
 
         /**
@@ -115,10 +110,10 @@ if (!class_exists('MoodleSSOHandler')) {
          */
         private function register_hooks() {
             // Login/Logout hooks
-            add_action('wp_login', [$this, 'handle_wp_login'], 10, 2);
-            add_action('init', [$this, 'handle_redirect_to_sso_login'], 100);
             add_filter('logout_url', [$this, 'modify_logout_url'], 10, 2);
-            add_action('wp_logout', [$this, 'handle_redirect_to_sso_logout']);
+            add_action('wp_login', [$this, 'handle_auto_sso_session'], 10, 2);
+            add_action('init', [$this, 'handle_auto_redirect_to_sso_login'], 100);
+            add_action('wp_logout', [$this, 'handle_auto_redirect_to_sso_logout']);
 
             // Shortcodes
             add_shortcode('moodle_link', [$this, 'moodle_link_shortcode']);
@@ -166,7 +161,7 @@ if (!class_exists('MoodleSSOHandler')) {
             }
 
             // Sync user to Moodle
-            $result = MoodleUserSync::get_instance()->sync_user_to_moodle($user);
+            $result = Moodle_User_Sync::get_instance()->sync_user_to_moodle($user);
 
             if (!$result['status']) {
                 wp_die($result['message']);
@@ -184,10 +179,6 @@ if (!class_exists('MoodleSSOHandler')) {
             exit;
         }
 
-        // =============================================================================
-        // HOOK HANDLERS
-        // =============================================================================
-
         /**
          * Handle WordPress login - Auto-login to Moodle
          *
@@ -200,13 +191,12 @@ if (!class_exists('MoodleSSOHandler')) {
          * @param \WP_User $user       User object
          * @return void
          */
-        public function handle_wp_login($user_login, $user) {
-            if (!$this->sso_helper->is_enabled()) {
+        public function handle_auto_sso_session($user_login, $user) {
+            if (!$this->moodleintegration->is_enabled() || !$this->moodleintegration->is_auto_sso()) {
                 return;
             }
-
-            $result = $this->sso_helper->send_session_to_moodle($user);
-
+            // 
+            $result = $this->moodleintegration->send_session_to_moodle($user);
             if (isset($result['status']) && $result['status']) {
                 // Store flag to prevent redirect loop
                 set_transient('moodle_sso_redirect_' . $user->ID, true, 60);
@@ -222,8 +212,8 @@ if (!class_exists('MoodleSSOHandler')) {
          * @since 1.0.0
          * @return void
          */
-        public function handle_redirect_to_sso_login() {
-            if (!is_user_logged_in()) {
+        public function handle_auto_redirect_to_sso_login() {
+            if (!is_user_logged_in() || !$this->moodleintegration->is_auto_sso()) {
                 return;
             }
 
@@ -233,7 +223,7 @@ if (!class_exists('MoodleSSOHandler')) {
             if (get_transient($transient_key)) {
                 delete_transient($transient_key);
                 $current_url = home_url(add_query_arg(null, null));
-                $this->sso_helper->redirect_to_sso_login($user, $current_url);
+                $this->moodleintegration->redirect_to_moodle_sso($user, 'login', $current_url);
             }
         }
 
@@ -267,20 +257,20 @@ if (!class_exists('MoodleSSOHandler')) {
          * @since 1.0.0
          * @return void
          */
-        public function handle_redirect_to_sso_logout() {
-            $redirect_url = wp_login_url() . '?loggedout=true';
-
-            if (isset($_REQUEST['redirect_to'])) {
-                $redirect_url = esc_url_raw($_REQUEST['redirect_to']);
-            }
-
-            // Check for Moodle SSO logout request
-            $moodle_sso_logout = isset($_GET['moodle_sso_logout']) ? intval($_GET['moodle_sso_logout']) : 0;
-            $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
-            if ($moodle_sso_logout === 1 && $uid) {
-                $user = get_userdata($uid);
-                if ($user) {
-                    $this->sso_helper->redirect_to_sso_logout($user, $redirect_url);
+        public function handle_auto_redirect_to_sso_logout() {
+            if ($this->moodleintegration->is_auto_sso()) {
+                $redirect_url = wp_login_url() . '?loggedout=true';
+                if (isset($_REQUEST['redirect_to'])) {
+                    $redirect_url = esc_url_raw($_REQUEST['redirect_to']);
+                }
+                // Check for Moodle SSO logout request
+                $moodle_sso_logout = isset($_GET['moodle_sso_logout']) ? intval($_GET['moodle_sso_logout']) : 0;
+                $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
+                if ($moodle_sso_logout === 1 && $uid) {
+                    $user = get_userdata($uid);
+                    if ($user) {
+                        $this->moodleintegration->redirect_to_moodle_sso($user, 'logout', $redirect_url);
+                    }
                 }
             }
         }
@@ -295,8 +285,9 @@ if (!class_exists('MoodleSSOHandler')) {
          *
          * @param array  $atts    Shortcode attributes {
          *     @type string $redirect_to URL to redirect after Moodle login. Default empty.
+         *     @type string $action     action type: login or logout. Default login.
          *     @type string $class       CSS class for the link. Default 'moodle-sso-link'.
-         *     @type string $target      Link target attribute. Default '_blank'.
+         *     @type string $target      Link target attribute. Default ''.
          * }
          * @param string $content Shortcode content (link text)
          * @return string HTML anchor link
@@ -304,17 +295,17 @@ if (!class_exists('MoodleSSOHandler')) {
         public function moodle_link_shortcode($atts, $content = '') {
             $atts = shortcode_atts([
                 'redirect_to' => '',
+                'action' => 'login',
                 'class' => 'moodle-sso-link',
-                'target' => '_blank'
+                'target' => ''
             ], $atts);
 
             if (!is_user_logged_in()) {
                 return '';
             }
 
-            if (!$this->sso_helper->is_enabled() || !is_user_logged_in()) {
-                return '<a href="' . esc_url($this->sso_helper->get_moodle_url() . '/login') . '" class="' . esc_attr($atts['class']) . '">' .
-                    esc_html($content ?: 'Login to Moodle') . '</a>';
+            if (!$this->moodleintegration->is_enabled()) {
+                return 'Moodle Integration is not enable';
             }
 
             $user = wp_get_current_user();
@@ -323,15 +314,15 @@ if (!class_exists('MoodleSSOHandler')) {
             if ($atts['redirect_to']) {
                 $redirect_url = esc_url($atts['redirect_to']);
             } else {
-                $redirect_url = $this->sso_helper->get_moodle_url() . '/my';
+                $redirect_url = $this->moodleintegration->get_moodle_url() . '/my';
             }
 
             // Get SSO login URL
-            $sso_url = $this->sso_helper->build_login_url($user, $redirect_url)['moodle_login_url'] ?? '';
-            if (!$sso_url) {
+            $auth_url = $this->moodleintegration->build_auth_url($user, $atts['action'], $redirect_url)['url'] ?? '';
+            if (!$auth_url) {
                 return '';
             }
-            return '<a href="' . esc_url($sso_url) . '" class="' . esc_attr($atts['class']) . '" target="' . esc_attr($atts['target']) . '">' .
+            return '<a href="' . esc_url($auth_url) . '" class="' . esc_attr($atts['class']) . '" target="' . esc_attr($atts['target']) . '">' .
                 esc_html($content ?: 'Go to Moodle') . '</a>';
         }
 
@@ -353,7 +344,7 @@ if (!class_exists('MoodleSSOHandler')) {
             }
 
             $user = wp_get_current_user();
-            $moodle_user_id = get_user_meta($user->ID, 'moodle_user_id', true);
+            $moodle_user_id = $this->moodleintegration->get_moodle_user_id($user);
             $last_sync = get_user_meta($user->ID, 'moodle_last_sync', true);
 
             if ($moodle_user_id) {
@@ -374,31 +365,51 @@ if (!class_exists('MoodleSSOHandler')) {
         }
 
         /**
-         * Render shortcodes Example
-         *
-         * Outputs moodle_link and moodle_status shortcodes before the closing </body> tag.
-         * Only renders for logged-in users when SSO is enabled.
+         * Render Test Example
          *
          * @since 1.0.0
          * @return void
          */
-        public static function render_shortcodes_sso_example() {
+        public static function render_test_example() {
             // Only render for logged-in users
             if (!is_user_logged_in()) {
                 return;
             }
 
-            // Render moodle_link shortcode
-            $moodle_link = do_shortcode('[moodle_link redirect_to="/my" class="btn" target="_blank"]Go to Course[/moodle_link]');
-
-            // Render moodle_status shortcode
+            // Render shortcode
             $moodle_status = do_shortcode('[moodle_status]');
+            $current_url = home_url(add_query_arg(null, null));
+            $moodle_dashboard_link = do_shortcode('[moodle_link redirect_to="/my" class="moodle-sso-link button button-primary" target="_blank"]Go to Moodle Dashboard[/moodle_link]');
+            $moodle_login_link = do_shortcode('[moodle_link redirect_to="' . $current_url . '" action="login" class="moodle-sso-link button button-primary"]Login to Moodle and Return back[/moodle_link]');
+            $moodle_logout_link = do_shortcode('[moodle_link redirect_to="' . $current_url . '" action="logout" class="moodle-sso-link button button-primary"]Logout to Moodle and Return back[/moodle_link]');
 
             // Output in footer
             echo '<div id="moodle-sso-status" style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-top: 2px solid #0073aa;">';
             echo '<div class="moodle-status" style="margin-top: 10px;">' . $moodle_status . '</div>';
-            echo '<div class="moodle-link">' . $moodle_link . '</div>';
+            echo '<div class="moodle-sso-link-wrapper" style="display: flex; flex-wrap: wrap; gap: 0.5rem; }">';
+            echo '<div class="moodle-link">' . $moodle_dashboard_link . '</div>';
+            echo '<div class="moodle-link">' . $moodle_login_link . '</div>';
+            echo '<div class="moodle-link">' . $moodle_logout_link . '</div>';
             echo '</div>';
+            echo '</div>';
+
+            // $user = \wp_get_current_user();
+            // $param = [
+            //     'users[username]'  => $user->user_login,
+            //     'users[firstname]' => get_user_meta($user->ID, 'first_name', true) ?: $user->display_name,
+            //     'users[lastname]'  => get_user_meta($user->ID, 'last_name', true) ?: 'N/A',
+            //     'users[email]'     => $user->user_email,
+            //     'users[password]'  => 'password123@M',
+            // ];
+
+            // $wsfunction = 'local_mchelpers_user_create';
+            // $response = Moodle_Integration::get_instance()->request_webservice($wsfunction, $param);
+            // $moodle_user_id = $response['id'] ?? 0;
+            // var_dump($moodle_user_id);
+
+            // $set = Moodle_Integration::get_instance()->update_moodle_user_id($user, $moodle_user_id);
+            // var_dump($set);
+            // var_dump($response);
         }
 
         /**
@@ -446,8 +457,7 @@ if (!class_exists('MoodleSSOHandler')) {
             $total_pages = ceil($total_users / $per_page);
 
             // Build table HTML
-            ob_start();
-?>
+            ob_start(); ?>
             <div class="moodle-sso-user-list wrap">
                 <h3><?php esc_html_e('Moodle SSO Users', 'helperbox'); ?></h3>
                 <?php echo $sync_notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped 

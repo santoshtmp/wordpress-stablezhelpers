@@ -40,6 +40,7 @@ const buildEntries = (pattern, baseDir) => {
  */
 const jsEntries = {
     'js/helperbox': path.resolve(__dirname, 'src/js/helperbox.js'),
+    'js/moodle-integraton': path.resolve(__dirname, 'src/js/moodle-integraton.js'),
     'js/admin': path.resolve(__dirname, 'src/js/admin.js'),
     'js/login': path.resolve(__dirname, 'src/js/login.js'),
     ...buildEntries('src/blocks/**/*.js', 'src'),
