@@ -81,6 +81,9 @@ if (!class_exists(__NAMESPACE__ . '\\Moodle_Handler')) {
             // initialize ajax endpoint
             Moodle_Endpoint_Ajax::get_instance();
 
+            // initialize REST API endpoint
+            Moodle_Endpoint_Rest::get_instance();
+
             // Register Hooks
             add_action('init', [$this, 'init_action']);
         }
