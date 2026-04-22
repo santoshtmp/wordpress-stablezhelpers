@@ -175,7 +175,6 @@ if (!class_exists(__NAMESPACE__ . '\\Moodle_User_Sync')) {
                     'firstname' => get_user_meta($user->ID, 'first_name', true) ?: $user->display_name,
                     'lastname' => get_user_meta($user->ID, 'last_name', true) ?: 'N/A',
                     'email' => $user->user_email,
-                    'password' => 'password123@M'
                 ]
             ];
 
@@ -184,11 +183,15 @@ if (!class_exists(__NAMESPACE__ . '\\Moodle_User_Sync')) {
             if ($moodle_user_id) {
                 $wsfunction = 'local_mchelpers_user_update';
                 $param['users']['id'] = $moodle_user_id;
+            } else {
+                $param['users']['password'] = $user->user_pass;
             }
 
             $response = $moodle_integrate->request_webservice($wsfunction, $param);
-            $moodle_user_id = $response['id'] ?? 0;
-            $moodle_integrate->update_moodle_user_id($user, $moodle_user_id);
+            if ($response['status']) {
+                $moodle_user_id = $response['id'] ?? 0;
+                $moodle_integrate->update_moodle_user_id($user, $moodle_user_id);
+            }
             return $response;
         }
 

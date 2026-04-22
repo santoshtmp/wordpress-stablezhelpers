@@ -1,8 +1,8 @@
 <?php
 
 /*
-Plugin Name: Custom Helper Box
-Description: Custom Helper Box provides the custom functions and features.
+Plugin Name: StableZ Helper Box
+Description: StableZ Helper Box provides the custom functions and features.
 Contributors: santoshtmp7
 Plugin URI: https://github.com/santoshtmp/wordpress-custom-helperbox
 Tags: settings, functions, security

@@ -202,10 +202,11 @@ if (!class_exists(__NAMESPACE__ . '\\Moodle_Endpoint_Ajax')) {
             $result = $sync->sync_user_to_moodle($wp_user);
 
             if ($result['status']) {
-                $result['html'] = Moodle_User_Admin::get_instance()->render_moodle_user_column_content('', 'moodle_user_id', $user_id);
+                $result['html'] = Moodle_User_Admin::get_instance()->render_moodle_user_column_content('', 'moodle_user_id', $user_id)
+                    . '<p><span>sucess</span></p>';
                 $this->send_response(true, $result, __('User synchronized successfully.', 'helperbox'));
             } else {
-                $this->send_response(false, [], $result['message'], $result, 500);
+                $this->send_response(false, $result, $result['message']);
             }
         }
 

@@ -8,7 +8,7 @@
 - **Tags:** settings, functions, security, moodle, admin, custom-post-type, block-patterns
 - **Author:** santoshtmp7
 - **Author URI:** https://github.com/santoshtmp
-- **Plugin URI:** https://github.com/santoshtmp/wordpress-custom-helperbox
+- **Plugin URI:** https://github.com/santoshtmp/wordpress-stablezhelpers
 - **Requires WP:** 6.5
 - **Requires at least:** 6.8
 - **Tested up to:** 6.8
@@ -169,7 +169,7 @@ Navigate to **Settings → Helper Box → Moodle Integration** and enter your Mo
 
 ## Support
 
-For issues, feature requests, or contributions, please visit the [GitHub repository](https://github.com/santoshtmp/wordpress-custom-helperbox).
+For issues, feature requests, or contributions, please visit the [GitHub repository](https://github.com/santoshtmp/wordpress-stablezhelpers).
 
 ## License
 

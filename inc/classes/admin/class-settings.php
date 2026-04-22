@@ -256,17 +256,6 @@ class Settings {
             ]
         );
 
-        // Custom theme templates directory setting.
-        register_setting(
-            $helperbox_general_settings_group,
-            'helperbox_custom_theme_templates_dir',
-            [
-                'type'              => 'string',
-                'sanitize_callback' => 'sanitize_text_field',
-                'default'           => '',
-            ]
-        );
-
         // User role name setting.
         register_setting(
             $helperbox_general_settings_group,
@@ -416,47 +405,6 @@ class Settings {
                     </div>
                 </td>
             </tr>
-            <tr>
-                <th scope="row">
-                    <label for="helperbox_custom_theme_templates_dir">
-                        <?php esc_html_e('Custom theme template dir', 'helperbox'); ?>
-                    </label>
-                </th>
-                <td>
-                    <?php
-                    $value = get_option('helperbox_custom_theme_templates_dir', Settings::CUSTOM_THEME_TEMP_DIR);
-                    ?>
-                    <input
-                        type="text"
-                        name="helperbox_custom_theme_templates_dir"
-                        id="helperbox_custom_theme_templates_dir"
-                        value="<?php echo esc_attr($value); ?>"
-                        class="regular-text">
-                    <div class="description">
-                        <p>
-                            <?php esc_html_e('This will define the active theme custom template dir. Example:', 'helperbox'); ?>
-                            <code>app/templates</code>.
-                        </p>
-                        <p><?php esc_html_e('If empty, default root directory will be used.', 'helperbox'); ?></p>
-                        <?php
-                        $templates_dir = get_stylesheet_directory() . '/' . trim($value, '/');
-                        if (is_dir($templates_dir)) {
-                            echo '<p>' . sprintf(
-                                esc_html__('Theme template is located at template dir: %s', 'helperbox'),
-                                '<code>' . esc_html(str_replace(ABSPATH, '', $templates_dir)) . '</code>'
-                            ) . '</p>';
-                        } else {
-                            echo '<p>' . sprintf(
-                                esc_html__('Incorrect template directory. There is no such directory: %s', 'helperbox'),
-                                '<code>' . esc_html(str_replace(ABSPATH, '', $templates_dir)) . '</code>'
-                            ) . '</p>';
-                        }
-                        ?>
-                        <p><?php printf(esc_html__('Default: %s', 'helperbox'), esc_html(Settings::CUSTOM_THEME_TEMP_DIR)); ?></p>
-                    </div>
-                </td>
-            </tr>
-
             <tr>
                 <th scope="row">
                     <label for="helperbox_user_role_name">

@@ -3,7 +3,7 @@ Contributors: santoshtmp7
 Tags: settings, functions, security
 Author: santoshtmp7
 Author URI: https://github.com/santoshtmp
-Plugin URI: https://github.com/santoshtmp/wordpress-custom-helperbox
+Plugin URI: https://github.com/santoshtmp/wordpress-stablezhelpers
 Requires WP: 6.5
 Requires at least: 6.8
 Tested up to: 6.8

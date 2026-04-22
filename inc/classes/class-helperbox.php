@@ -64,8 +64,6 @@ class HelperBox {
 
         // General hooks
         add_action('admin_notices', [$this, 'helperbox_admin_notices']);
-        add_filter('theme_page_templates', [$this, 'register_page_templates']);
-        add_filter('page_template_hierarchy', [$this, 'page_template_to_subdir']);
         add_filter('upload_mimes', [$this, 'helperbox_upload_mimes']);
 
         // include api path
@@ -102,86 +100,6 @@ class HelperBox {
                 }
             }
         }
-    }
-
-    /**
-     * ==============================
-     * https://developer.wordpress.org/reference/hooks/theme_page_templates/ 
-     * https://developer.wordpress.org/themes/template-files-section/page-template-files/
-     * https://www.wpexplorer.com/wordpress-page-templates-plugin/
-     * @param array $post_templates Array of page templates. Keys are filenames, values are translated names.
-     * @return array Filtered array of page templates.
-     * ==============================
-     */
-    function register_page_templates($post_templates) {
-        // check setting
-        $theme_templates_dir = get_option('helperbox_custom_theme_templates_dir', Settings::CUSTOM_THEME_TEMP_DIR);
-        if (!$theme_templates_dir) {
-            return $post_templates;
-        }
-        $templates_dir = get_stylesheet_directory() . '/' . trim($theme_templates_dir, "/");
-        if (!is_dir($templates_dir)) {
-            return $post_templates;
-        }
-
-        $template_files = scandir($templates_dir);
-        foreach ($template_files as $filename) {
-            if ($filename === '.' || $filename === '..') {
-                continue;
-            }
-            $path_info = pathinfo($filename);
-            if ($path_info['extension'] === 'php') {
-                $full_path = $templates_dir . '/' . $filename;
-                if (preg_match('|Template Name:(.*)$|mi', file_get_contents($full_path), $header)) {
-                    $template_name = trim(_cleanup_header_comment($header[1]));
-                    $template_path = $theme_templates_dir . '/' . $filename;
-                    $post_templates[$template_path] = $template_name;
-                }
-            }
-        }
-        return $post_templates;
-    }
-
-
-    /*
-        ==============================
-        https://developer.wordpress.org/reference/hooks/type_template_hierarchy/
-        https://developer.wordpress.org/themes/basics/template-hierarchy/
-        https://wordpress.stackexchange.com/a/227006/110572
-        ==============================
-        */
-    function page_template_to_subdir($templates = array()) {
-        // check setting
-        $theme_templates_dir = get_option('helperbox_custom_theme_templates_dir', Settings::CUSTOM_THEME_TEMP_DIR);
-        $theme_templates_dir = trim($theme_templates_dir, "/");
-        if (!$theme_templates_dir) {
-            return $templates;
-        }
-        $templates_dir = get_stylesheet_directory() . '/' . trim($theme_templates_dir, "/");
-        if (!is_dir($templates_dir)) {
-            return $templates;
-        }
-
-        // Generally this doesn't happen, unless another plugin / theme does modifications of their own.
-        // In that case, it's better not to mess with it again with our code.
-        if (empty($templates) || !is_array($templates) || count($templates) < 3) {
-            return $templates;
-        }
-
-        $page_tpl_idx = 0;
-        $cnt = count($templates);
-        if ($templates[0] === get_page_template_slug()) {
-            // if there is custom template, then our page-{slug}.php template is at the next index 
-            $page_tpl_idx = 1;
-        }
-
-        // the last one in $templates is page.php, so
-        // all but the last one in $templates starting from $page_tpl_idx will be moved to sub-directory
-        for ($i = $page_tpl_idx; $i < $cnt - 1; $i++) {
-            $templates[$i] = $theme_templates_dir . '/' . $templates[$i];
-        }
-
-        return $templates;
     }
 
     /**

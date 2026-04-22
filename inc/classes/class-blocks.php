@@ -27,11 +27,6 @@ class Blocks {
         add_action('init', [$this, 'init_action']);
         add_action('enqueue_block_editor_assets', [$this, 'block_editor_assets']);
         add_filter('block_categories_all', [$this, 'add_block_category']);
-        add_filter('allowed_block_types_all', [$this, 'helperbox_allowed_restrict_block_types'], 10, 2);
-
-        // Filters whether block styles should be loaded separately.
-        // https://developer.wordpress.org/reference/hooks/should_load_separate_core_block_assets/
-        add_filter('should_load_separate_core_block_assets', '__return_true');
     }
 
     /**
@@ -60,59 +55,6 @@ class Blocks {
             ]
         );
         return $block_categories;
-    }
-
-    /**
-     * Restrict allowed blocks
-     * https://developer.wordpress.org/reference/hooks/allowed_block_types_all/
-     * https://developer.wordpress.org/news/2024/01/29/how-to-disable-specific-blocks-in-wordpress/
-     * 
-     * @return void
-     */
-    public function helperbox_allowed_restrict_block_types($allowed_block_types, $block_editor_context) {
-        try {
-            $allowed_block_types = [];
-            $disallowed_blocks = [
-                'core/legacy-widget',
-                'core/widget-group',
-                'core/archives',
-                'core/avatar',
-                'core/block',
-                'core/calendar',
-                'core/categories',
-                'core/footnotes',
-                'core/navigation',
-                'core/query',
-                'core/query-title',
-                'core/latest-posts',
-                'core/page-list',
-                'core/tag-cloud',
-                'core/post-terms',
-                'core/freeform'
-            ];
-            $registered_blocks   = WP_Block_Type_Registry::get_instance()->get_all_registered();
-            foreach ($registered_blocks as $key => $value) {
-                // check comment setting
-                if (str_contains($key, 'comment')) {
-                    if (Check_Settings::is_helperbox_disable_comment()) {
-                        $disallowed_blocks[] = $key;
-                    } else {
-                        $allowed_block_types[] = $key;
-                    }
-                } else {
-                    $allowed_block_types[] = $key;
-                }
-            }
-            $filtered_blocks = array();
-            foreach ($allowed_block_types as $block) {
-                if (!in_array($block, $disallowed_blocks, true)) {
-                    $filtered_blocks[] = $block;
-                }
-            }
-            return $filtered_blocks;
-        } catch (\Throwable $th) {
-            return true; //$allowed_block_types;
-        }
     }
 
     /**

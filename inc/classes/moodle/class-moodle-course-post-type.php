@@ -157,16 +157,16 @@ if (!class_exists(__NAMESPACE__ . '\\Moodle_Course_Post_Type')) {
                 "supports" => [],
                 "show_in_graphql" => false,
                 "can_import" => false,
-                "capabilities" => [
-                    "create_posts" => "do_not_allow",
-                    "edit_posts" => "edit_posts",
-                    "edit_post" => "do_not_allow",
-                    "delete_posts" => "do_not_allow",
-                    "delete_post" => "do_not_allow",
-                    "publish_posts" => "do_not_allow",
-                    "read_post" => "read",
-                    "read_private_posts" => "read_private_posts",
-                ],
+                // "capabilities" => [
+                //     "create_posts" => "do_not_allow",
+                //     "edit_posts" => "edit_posts",
+                //     "edit_post" => "do_not_allow",
+                //     "delete_posts" => "do_not_allow",
+                //     "delete_post" => "do_not_allow",
+                //     "publish_posts" => "do_not_allow",
+                //     "read_post" => "read",
+                //     "read_private_posts" => "read_private_posts",
+                // ],
             ];
 
             register_post_type("mdl_course", $args);
@@ -231,12 +231,12 @@ if (!class_exists(__NAMESPACE__ . '\\Moodle_Course_Post_Type')) {
                 "show_in_quick_edit" => false,
                 "sort" => true,
                 "show_in_graphql" => false,
-                "capabilities" => [
-                    "manage_terms" => "manage_categories",
-                    "edit_terms" => "do_not_allow",
-                    "delete_terms" => "do_not_allow",
-                    "assign_terms" => "do_not_allow",
-                ],
+                // "capabilities" => [
+                //     "manage_terms" => "manage_categories",
+                //     "edit_terms" => "do_not_allow",
+                //     "delete_terms" => "do_not_allow",
+                //     "assign_terms" => "do_not_allow",
+                // ],
             ];
             register_taxonomy("mdl_course_category", ["mdl_course"], $args);
         }
